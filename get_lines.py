@@ -34,7 +34,40 @@ def check_point(co_y, co_x, dist):
             print("best hitrate is: " + str(best_line['hitrate']))
             clear_plot()
             b_plot_line(best_line)
-            plot_hitpoints(best_line)
+            #plot_hitpoints(best_line)
+            remove_area_line(best_line)
+        else:
+            img[co_y][co_x] = 0
+    else:
+        img[co_y][co_x] = 0
+
+
+def remove_area_line(line):
+    print("started clearing image")
+    global im
+    a = line['angle']
+    start_point_index, end_point_index, length = get_min_max_line(line)
+    co_start_x = line['hitpoints_x'][start_point_index]
+    co_start_y = line['hitpoints_y'][start_point_index]
+
+    co_end_x = line['hitpoints_x'][end_point_index]
+
+    dist = abs(co_start_x - co_end_x)
+    sign = (co_start_x - co_end_x)/dist
+
+    for i in range(bolt_const.miss_start, int(dist) - bolt_const.miss_start +1):
+        p_x = co_start_x - i*sign
+        p_y = co_start_y - a*i*sign
+        for b in range(-int(dist*bolt_const.remove_width), int(dist*bolt_const.remove_width) + 1):
+            for x in range(2):
+                for y in range(2):
+                    p2_x = int(p_x + b) + x
+                    p2_y = int(p_y + b*(1-a)) + y
+                    img[p2_y][p2_x] = 0
+                    im.set_data(img)
+                    #plot_point((p2_y, p2_x))
+        plot_point((p_y, p_x))
+
 
 
 def clear_plot():
@@ -54,7 +87,7 @@ def b_plot_line(line):
     plt.pause(bolt_const.graph_update_time)
 
 
-def get_better_line(line, iteration=0):
+def get_better_line(line, iteration=0, sensitivity = 0.05):
     clear_plot()
     hitpoints_x = line['hitpoints_x']
     hitpoints_y = line['hitpoints_y']
@@ -62,7 +95,7 @@ def get_better_line(line, iteration=0):
     start_point_index, end_point_index, length = get_min_max_line(line)
 
     #plt.plot((hitpoints_x[start_point_index], hitpoints_x[end_point_index]), (hitpoints_y[start_point_index], hitpoints_y[end_point_index]))
-    extra_rot = [1-0.05/math.pow(2,iteration),1,1+0.05/math.pow(2,iteration)]
+    extra_rot = [1-sensitivity,1,1+sensitivity]
     best_line = line
     for i in range(0, len(extra_rot)):
         a, b = np.polyfit(hitpoints_x, hitpoints_y, 1)
@@ -78,6 +111,7 @@ def get_better_line(line, iteration=0):
         new_line = check_line(hitpoints_y[start_point_index], hitpoints_x[start_point_index], end_point_y, end_point_x)
 
         if new_line['hitrate'] >= best_line['hitrate']:
+
             print("improved line from: " + str(line['hitrate']) + " to line with: " + str(new_line['hitrate']) + " in iteration: " + str(iteration))
             best_line = new_line
         else:
@@ -86,7 +120,10 @@ def get_better_line(line, iteration=0):
     print("in iteration: " + str(iteration) + " we changed from " + str(line['hitrate']) + " to: " + str(best_line['hitrate']))
     #b_plot_line(best_line)
     if best_line['hitrate'] > line['hitrate']:
-        return get_better_line(best_line, iteration=iteration+1)
+        if best_line['hitrate'] - line['hitrate'] > bolt_const.change_sensitivity:
+            return get_better_line(best_line, iteration=iteration+1, sensitivity=sensitivity)
+        else:
+            return get_better_line(best_line, iteration=iteration + 1, sensitivity=sensitivity/2)
     else:
         return line
 
@@ -106,6 +143,7 @@ def get_min_max_line(line):
     else:
         start_point_index = hitpoints_y.index(max_y)
         end_point_index = hitpoints_y.index(min_y)
+
     length = math.sqrt(math.pow(hitpoints_x[start_point_index] - hitpoints_x[end_point_index], 2) + math.pow(
         hitpoints_y[start_point_index] - hitpoints_y[end_point_index], 2))
 
@@ -113,7 +151,7 @@ def get_min_max_line(line):
 
 
 def check_line(co1_y, co1_x, co2_y, co2_x,length = bolt_const.edge_length_cst_mod):
-    debug = True
+    debug = False
     angle = (float(co1_y) - co2_y) / (co1_x - co2_x)
     hitpoints_x = []
     hitpoints_y = []
@@ -125,6 +163,7 @@ def check_line(co1_y, co1_x, co2_y, co2_x,length = bolt_const.edge_length_cst_mo
         sub_hitpoints_y = []
         for x in range(0,2):
             for y in range(0,2):
+                #Get rounded up and rounded down for x and y, 4 comb
                 p_x = int(co1_x + (dist/bolt_const.div_segments)*i) + x
                 p_y = int(co1_y + angle * (dist/bolt_const.div_segments)*i) + y
                 if within_bounds((p_y, p_x)):
@@ -184,28 +223,24 @@ def plot_point(co, color='r'):
 
 
 
-img = cv2.imread('canny/3.png',0)
+img = cv2.imread('canny/1.png',0)
 print(len(img))
 img_height = len(img)
 img_width = len(img[0])
 
 plot_elem = []
 
-plt.imshow(img,cmap = 'gray')
+im = plt.imshow(img,cmap = 'gray')
 plt.title('Original Image'), plt.xticks([]), plt.yticks([])
-plt.imshow(img,cmap = 'gray')
-plt.title('Original Image'), plt.xticks([]), plt.yticks([])
+
 plt.ion()
 stop_loop = False
 for y in range(0, img_height):
     for x in range(0, img_width):
         if img[y][x]:
             print(img[y][x])
-            stop_loop = True
             check_point(y,x, 3)
-            break
-    if stop_loop:
-        break
+
 plt.pause(5000)
 
 plt.show()
