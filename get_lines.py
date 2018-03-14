@@ -4,9 +4,12 @@ from matplotlib import pyplot as plt
 import bolt_const
 import math
 import logging
+import time
 
+lines = []
 
 def check_point(co_y, co_x, dist):
+    clear_plot()
     debug = False
     best_line = None
     plot_point([co_y, co_x])
@@ -28,14 +31,17 @@ def check_point(co_y, co_x, dist):
                     best_line = line_info
 
     if best_line is not None:
-        if best_line['hitrate'] > bolt_const.line_treshold:
+        if best_line['hitrate'] > bolt_const.line_treshold_first:
             clear_plot()
             best_line = get_better_line(best_line)
             print("best hitrate is: " + str(best_line['hitrate']))
             clear_plot()
-            b_plot_line(best_line)
+            if best_line['hitrate'] > bolt_const.line_treshold_second:
+                lines.append(best_line)
+                remove_area_line(best_line)
+            #b_plot_line(best_line)
             #plot_hitpoints(best_line)
-            remove_area_line(best_line)
+
         else:
             img[co_y][co_x] = 0
     else:
@@ -43,31 +49,36 @@ def check_point(co_y, co_x, dist):
 
 
 def remove_area_line(line):
+    debug = False
     print("started clearing image")
     global im
-    a = line['angle']
+    vec = line['vector']
     start_point_index, end_point_index, length = get_min_max_line(line)
     co_start_x = line['hitpoints_x'][start_point_index]
     co_start_y = line['hitpoints_y'][start_point_index]
 
-    co_end_x = line['hitpoints_x'][end_point_index]
-
-    dist = abs(co_start_x - co_end_x)
-    sign = (co_start_x - co_end_x)/dist
-
-    for i in range(bolt_const.miss_start, int(dist) - bolt_const.miss_start +1):
-        p_x = co_start_x - i*sign
-        p_y = co_start_y - a*i*sign
-        for b in range(-int(dist*bolt_const.remove_width), int(dist*bolt_const.remove_width) + 1):
+    for i in range(bolt_const.miss_start, int(length) - bolt_const.miss_start +1):
+        p_x = co_start_x + vec[1]*i
+        p_y = co_start_y + vec[0]*i
+        for b in range(0, int(length*bolt_const.remove_width) + 1):
             for x in range(2):
                 for y in range(2):
-                    p2_x = int(p_x + b) + x
-                    p2_y = int(p_y + b*(1-a)) + y
-                    img[p2_y][p2_x] = 0
-                    im.set_data(img)
-                    #plot_point((p2_y, p2_x))
-        plot_point((p_y, p_x))
+                    p1_x = int(p_x + vec[0]*b) + x
+                    p1_y = int(p_y - vec[1]*b) + y
+                    if within_bounds((p1_y,p1_x)):
+                        img[p1_y][p1_x] = 0
 
+                    p2_x = int(p_x - vec[0] * b) + x
+                    p2_y = int(p_y + vec[1] * b) + y
+                    if within_bounds((p2_y, p2_x)):
+                        img[p2_y][p2_x] = 0
+
+                    im.set_data(img)
+                    if debug:
+                        plot_point((p2_y, p2_x))
+                        plot_point((p1_y, p1_x))
+        if debug:
+            plot_point((p_y, p_x))
 
 
 def clear_plot():
@@ -98,9 +109,13 @@ def get_better_line(line, iteration=0, sensitivity = 0.05):
     extra_rot = [1-sensitivity,1,1+sensitivity]
     best_line = line
     for i in range(0, len(extra_rot)):
-        a, b = np.polyfit(hitpoints_x, hitpoints_y, 1)
-        a *= extra_rot[i]
-        vec = np.array([1,a])
+        if len(hitpoints_x) > 1:
+            a, b = np.polyfit(hitpoints_x, hitpoints_y, 1)
+            a *= extra_rot[i]
+            vec = np.array([1, a])
+        else:
+            vec = line['vector']
+
         norm = np.linalg.norm(vec)
         mult = length/norm
         vec = vec*mult
@@ -128,6 +143,7 @@ def get_better_line(line, iteration=0, sensitivity = 0.05):
         return line
 
 
+#function gives the index of the 2 most outest points from the hitpoint in line
 def get_min_max_line(line):
     hitpoints_x = line['hitpoints_x']
     hitpoints_y = line['hitpoints_y']
@@ -151,21 +167,24 @@ def get_min_max_line(line):
 
 
 def check_line(co1_y, co1_x, co2_y, co2_x,length = bolt_const.edge_length_cst_mod):
-    debug = False
-    angle = (float(co1_y) - co2_y) / (co1_x - co2_x)
+    debug = True
+    vec = np.array([co2_y-co1_y, co2_x-co1_x])
+
+    norm = np.linalg.norm(vec)
+    vec = vec / norm
     hitpoints_x = []
     hitpoints_y = []
-    dist = math.sqrt(length/(1+angle*angle))
+    dist = math.sqrt(length/bolt_const.div_segments)
     hits = 0
     for i in range(-bolt_const.div_segments,bolt_const.div_segments+1):
         sub_hits = 0
         sub_hitpoints_x = []
         sub_hitpoints_y = []
-        for x in range(0,2):
-            for y in range(0,2):
+        for x in range(-1,3):
+            for y in range(-1,3):
                 #Get rounded up and rounded down for x and y, 4 comb
-                p_x = int(co1_x + (dist/bolt_const.div_segments)*i) + x
-                p_y = int(co1_y + angle * (dist/bolt_const.div_segments)*i) + y
+                p_x = int(co1_x + vec[1]*dist*i) + x
+                p_y = int(co1_y + vec[0]*dist*i) + y
                 if within_bounds((p_y, p_x)):
                     if img[p_y, p_x]:
                         hits += 1
@@ -183,9 +202,10 @@ def check_line(co1_y, co1_x, co2_y, co2_x,length = bolt_const.edge_length_cst_mo
 
     hitrate = hits / (bolt_const.div_segments*2*4.0)
     if debug:
-        ln, = plt.plot([co1_x + dist, co1_x - dist], [co1_y + dist*angle, co1_y - dist*angle])
+        ln, = plt.plot([co1_x + vec[1]*dist*bolt_const.div_segments, co1_x - vec[1]*dist*bolt_const.div_segments],
+                       [co1_y + vec[0]*dist*bolt_const.div_segments, co1_y - vec[0]*dist*bolt_const.div_segments])
         plot_elem.append(ln)
-    return {'hitrate': hitrate, 'co': (co1_y, co1_x), 'angle': angle, 'hitpoints_x': hitpoints_x, 'hitpoints_y': hitpoints_y}
+    return {'hitrate': hitrate, 'co': (co1_y, co1_x), 'vector': vec, 'hitpoints_x': hitpoints_x, 'hitpoints_y': hitpoints_y}
 
 
 def within_bounds(co):
@@ -221,6 +241,48 @@ def plot_point(co, color='r'):
         plt.pause(bolt_const.graph_update_time)
 
 
+def prep():
+    x_max = [0] * img_height
+    x_min = [img_width - 1] * img_height
+
+    y_max = [0] * img_width
+    y_min = [img_height - 1] * img_width
+
+    for y in range(0, img_height):
+        for x in range(0, img_width):
+            if img[y][x]:
+                if x_max[y] < x:
+                    x_max[y] = x
+                if x_min[y] > x:
+                    x_min[y] = x
+
+                if y_max[x] < y:
+                    y_max[x] = y
+                if y_min[x] > y:
+                    y_min[x] = y
+
+    for y in range(0, img_height):
+        for x in range(0, img_width):
+            if img[y][x]:
+                if x_min[y] < x < x_max[y]:
+                    img[y][x] = 0
+                if y_min[x] < y < y_max[x]:
+                    img[y][x] = 0
+                im.set_data(img)
+
+            # if y_max[x] == 0 and x > 1:
+            #     y_max[x] = y_max[x - 1]
+            #     img[y_max[x - 1]][x] = 1
+            #     im.set_data(img)
+            #
+            # if y_min[x] == img_height and x > 1:
+            #     y_min[x] = y_min[x - 1]
+            #     img[y_min[x - 1]][x] = 1
+            #     im.set_data(img)
+    print("ended prep")
+
+
+
 
 
 img = cv2.imread('canny/1.png',0)
@@ -235,11 +297,20 @@ plt.title('Original Image'), plt.xticks([]), plt.yticks([])
 
 plt.ion()
 stop_loop = False
+prep()
 for y in range(0, img_height):
     for x in range(0, img_width):
         if img[y][x]:
             print(img[y][x])
             check_point(y,x, 3)
+            stop_loop = False
+            if stop_loop:
+                break
+    if stop_loop:
+        break
+
+for l in lines:
+    b_plot_line(l)
 
 plt.pause(5000)
 

@@ -1,9 +1,10 @@
-edge_length_cst = 40
+edge_length_cst = 20
 edge_length_cst_mod = ((2*edge_length_cst)*(2*edge_length_cst))/4
 div_segments = 10
-line_treshold = 0.13
+line_treshold_first = 0.01
+line_treshold_second = 0.05
 better_line_iterations = 2
 graph_update_time = 0.001
 change_sensitivity = 0.04
-remove_width = 0.1
+remove_width = 0.2
 miss_start = 1
